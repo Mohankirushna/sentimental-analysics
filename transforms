@@ -1,0 +1,230 @@
+from transformers import pipeline
+import torch
+import warnings
+from datetime import datetime
+import os
+
+# Suppress warnings for cleaner output
+warnings.filterwarnings("ignore")
+
+class SentimentChatbot:
+    def __init__(self):
+        self.classifier = None
+        self.conversation_history = []
+        
+        # Enhanced label mapping with emojis
+        self.label_map = {
+            'LABEL_0': {'sentiment': 'negative', 'emoji': '😔'},
+            'LABEL_1': {'sentiment': 'neutral', 'emoji': '😐'},
+            'LABEL_2': {'sentiment': 'positive', 'emoji': '😊'},
+            # Fallback for different model outputs
+            'label_0': {'sentiment': 'negative', 'emoji': '😔'},
+            'label_1': {'sentiment': 'neutral', 'emoji': '😐'},
+            'label_2': {'sentiment': 'positive', 'emoji': '😊'},
+            'NEGATIVE': {'sentiment': 'negative', 'emoji': '😔'},
+            'NEUTRAL': {'sentiment': 'neutral', 'emoji': '😐'},
+            'POSITIVE': {'sentiment': 'positive', 'emoji': '😊'}
+        }
+    
+    def load_model(self):
+        """Load the sentiment analysis model with error handling"""
+        try:
+            print("🔄 Loading sentiment analysis model...")
+            print("   This may take a moment on first run...")
+            
+            # Try multiple model options for better compatibility
+            models_to_try = [
+                "cardiffnlp/twitter-roberta-base-sentiment-latest",
+                "cardiffnlp/twitter-roberta-base-sentiment",
+                "distilbert-base-uncased-finetuned-sst-2-english"
+            ]
+            
+            for model_name in models_to_try:
+                try:
+                    self.classifier = pipeline(
+                        "sentiment-analysis", 
+                        model=model_name,
+                        return_all_scores=False
+                    )
+                    print(f"✅ Successfully loaded model: {model_name}")
+                    break
+                except Exception as e:
+                    print(f"⚠️  Failed to load {model_name}, trying next...")
+                    continue
+            
+            if self.classifier is None:
+                raise Exception("All models failed to load")
+                
+        except Exception as e:
+            print(f"❌ Error loading model: {e}")
+            print("💡 Make sure you have transformers and torch installed:")
+            print("   pip install transformers torch")
+            return False
+        
+        return True
+    
+    def analyze_sentiment(self, text):
+        """Analyze sentiment with enhanced error handling and formatting"""
+        if not self.classifier:
+            return "❌ Model not loaded. Please restart the chatbot."
+        
+        try:
+            # Clean the input text
+            text = text.strip()
+            if not text:
+                return "🤔 I need some text to analyze!"
+            
+            # Get sentiment prediction
+            result = self.classifier(text)[0]
+            label = result['label']
+            score = result['score']
+            
+            # Map label to sentiment and emoji
+            sentiment_info = self.label_map.get(label, {
+                'sentiment': label.lower(), 
+                'emoji': '🤖'
+            })
+            
+            sentiment = sentiment_info['sentiment']
+            emoji = sentiment_info['emoji']
+            
+            # Create confidence level description
+            if score >= 0.8:
+                confidence_desc = "very confident"
+            elif score >= 0.6:
+                confidence_desc = "confident"
+            elif score >= 0.4:
+                confidence_desc = "somewhat confident"
+            else:
+                confidence_desc = "uncertain"
+            
+            # Store in conversation history
+            self.conversation_history.append({
+                'timestamp': datetime.now().strftime("%H:%M:%S"),
+                'text': text,
+                'sentiment': sentiment,
+                'score': score
+            })
+            
+            # Create response
+            response = f"{emoji} I sense your sentiment is **{sentiment}** (I'm {confidence_desc} - {score:.1%})"
+            
+            # Add contextual responses
+            if sentiment == 'positive':
+                response += "\nThat's wonderful to hear! 🌟"
+            elif sentiment == 'negative':
+                response += "\nI hope things get better for you. 💙"
+            elif score < 0.6:  # Low confidence
+                response += "\nYour message seems quite neutral or mixed. 🤷‍♂️"
+            
+            return response
+            
+        except Exception as e:
+            return f"⚠️ Error analyzing sentiment: {str(e)}"
+    
+    def show_stats(self):
+        """Show conversation statistics"""
+        if not self.conversation_history:
+            return "📊 No conversations analyzed yet."
+        
+        total = len(self.conversation_history)
+        positive = sum(1 for h in self.conversation_history if h['sentiment'] == 'positive')
+        negative = sum(1 for h in self.conversation_history if h['sentiment'] == 'negative')
+        neutral = sum(1 for h in self.conversation_history if h['sentiment'] == 'neutral')
+        
+        avg_score = sum(h['score'] for h in self.conversation_history) / total
+        
+        stats = f"""
+📊 **Conversation Statistics**
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Total messages: {total}
+😊 Positive: {positive} ({positive/total:.1%})
+😔 Negative: {negative} ({negative/total:.1%})
+😐 Neutral: {neutral} ({neutral/total:.1%})
+🎯 Average confidence: {avg_score:.1%}
+        """
+        return stats.strip()
+    
+    def clear_history(self):
+        """Clear conversation history"""
+        self.conversation_history = []
+        return "🧹 Conversation history cleared!"
+    
+    def show_help(self):
+        """Show available commands"""
+        help_text = """
+🤖 **Sentiment Chatbot Commands**
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Just type any message to analyze sentiment
+• 'stats' - Show conversation statistics
+• 'clear' - Clear conversation history
+• 'help' - Show this help message
+• 'exit' or 'quit' - End the conversation
+
+**Examples to try:**
+• "I'm having a great day!"
+• "This is frustrating..."
+• "The weather is okay"
+        """
+        return help_text.strip()
+    
+    def run(self):
+        """Main chatbot loop with enhanced interface"""
+        print("🤖 **Enhanced Sentiment Analysis Chatbot**")
+        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        
+        # Load model
+        if not self.load_model():
+            return
+        
+        print("\n✨ Ready to analyze your sentiments!")
+        print("💬 Type your message and press Enter")
+        print("❓ Type 'help' for commands or 'exit' to quit\n")
+        
+        while True:
+            try:
+                user_input = input("You: ").strip()
+                
+                if user_input.lower() in ['exit', 'quit', 'bye']:
+                    print("\nChatbot: Thanks for chatting! Have a great day! 👋✨")
+                    if self.conversation_history:
+                        print(self.show_stats())
+                    break
+                
+                if user_input == '':
+                    continue
+                
+                # Handle special commands
+                if user_input.lower() == 'help':
+                    print(f"\nChatbot: {self.show_help()}\n")
+                    continue
+                elif user_input.lower() == 'stats':
+                    print(f"\nChatbot: {self.show_stats()}\n")
+                    continue
+                elif user_input.lower() == 'clear':
+                    print(f"\nChatbot: {self.clear_history()}\n")
+                    continue
+                
+                # Analyze sentiment
+                response = self.analyze_sentiment(user_input)
+                print(f"\nChatbot: {response}\n")
+                
+            except KeyboardInterrupt:
+                print("\n\nChatbot: Goodbye! 👋")
+                break
+            except Exception as e:
+                print(f"\n⚠️ Unexpected error: {e}")
+                print("Please try again or type 'exit' to quit.\n")
+
+def main():
+    """Main function to run the chatbot"""
+    try:
+        chatbot = SentimentChatbot()
+        chatbot.run()
+    except Exception as e:
+        print(f"❌ Failed to start chatbot: {e}")
+        print("Make sure you have the required dependencies installed:")
+        print("pip install transformers torch")
+
+if __name__ == "__main__":
+    main()
