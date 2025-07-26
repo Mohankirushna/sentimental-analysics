@@ -1,0 +1,89 @@
+# Import necessary libraries
+import pandas as pd
+import urllib.request
+import pickle
+import os
+import nltk
+from nltk.sentiment.vader import SentimentIntensityAnalyzer
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.naive_bayes import MultinomialNB
+
+# Download VADER lexicon
+nltk.download('vader_lexicon')
+
+# Load or fetch dataset
+data_file = 'train.tsv'
+if not os.path.exists(data_file):
+    url = 'https://github.com/clairett/pytorch-sentiment-classification/raw/master/data/SST2/train.tsv'
+    urllib.request.urlretrieve(url, data_file)
+
+# Read dataset
+data = pd.read_csv(data_file, sep='\t', header=None, names=['text', 'label'])
+data['label'] = data['label'].map({0: 'negative', 1: 'positive'})
+
+# Vectorize and train ML model
+X = data['text']
+y = data['label']
+vectorizer = TfidfVectorizer(stop_words='english', ngram_range=(1, 2))
+X_vect = vectorizer.fit_transform(X)
+
+model = MultinomialNB()
+model.fit(X_vect, y)
+
+# VADER setup
+sia = SentimentIntensityAnalyzer()
+
+# Keyword lists
+positive_keywords = ['happy', 'joy', 'love', 'excited', 'great', 'wonderful', 'fantastic']
+negative_keywords = ['sad', 'angry', 'bad', 'terrible', 'depressed', 'unhappy', 'hate']
+
+# VADER-based analysis
+def analyze_sentiment_vader(text):
+    sentiment = sia.polarity_scores(text)
+    compound = sentiment.get('compound', 0)
+    if any(k in text.lower() for k in positive_keywords):
+        return 'positive'
+    if any(k in text.lower() for k in negative_keywords):
+        return 'negative'
+    if compound >= 0.05:
+        return 'positive'
+    elif compound <= -0.05:
+        return 'negative'
+    return 'neutral'
+
+# ML-based analysis
+def analyze_sentiment_ml(text):
+    try:
+        vect_text = vectorizer.transform([text])
+        return model.predict(vect_text)[0]
+    except:
+        return 'neutral'
+
+# Chatbot response
+def chatbot_response(user_input, method='ML'):
+    if method.upper() == 'VADER':
+        sentiment = analyze_sentiment_vader(user_input)
+    else:
+        sentiment = analyze_sentiment_ml(user_input)
+    return f"I sense that your sentiment is {sentiment}."
+
+# CLI loop
+def run_chatbot_cli():
+    print("\n🤖 Sentiment Analysis Chatbot (Terminal Version)")
+    print("Type 'exit' to quit the chat.")
+    method = input("Choose method [ML / VADER]: ").strip().upper()
+    if method not in ['ML', 'VADER']:
+        print("Invalid choice. Defaulting to ML.")
+        method = 'ML'
+
+    while True:
+        user_input = input("\nYou: ")
+        if user_input.lower() == 'exit':
+            print("👋 Chatbot: Goodbye!")
+            break
+        response = chatbot_response(user_input, method)
+        print("Chatbot:", response)
+
+# Run
+if __name__ == "__main__":
+    run_chatbot_cli()
